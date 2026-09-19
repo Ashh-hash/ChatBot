@@ -1,0 +1,36 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+}
+
+model conversation {
+  id        Int       @id @default(autoincrement())
+  title     String?
+  createdAt DateTime  @default(now())
+  userId    Int
+  user      user      @relation(fields: [userId], references: [id], map: "Conversation_userId_fkey")
+  message   message[]
+
+  @@index([userId], map: "Conversation_userId_fkey")
+}
+
+model message {
+  id             Int          @id @default(autoincrement())
+  role           String
+  content        String       @db.Text
+  createdAt      DateTime     @default(now())
+  conversationId Int
+  conversation   conversation @relation(fields: [conversationId], references: [id], map: "Message_conversationId_fkey")
+
+  @@index([conversationId], map: "Message_conversationId_fkey")
+}
+
+model user {
+  id           Int            @id @default(autoincrement())
+  name         String?
+  createdAt    DateTime       @default(now())
+  conversation conversation[]
+}
