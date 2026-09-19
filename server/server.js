@@ -88,7 +88,7 @@ app.post("/api/chat", async (req, res) => {
     const conversationId =
       Number(req.body.conversationId);
 
-    const documentContent = req.body.documentContent;
+    const documentId = req.body.documentId;
 
     console.log("Messages received from React:");
     console.log(messages);
@@ -98,8 +98,18 @@ app.post("/api/chat", async (req, res) => {
     );
     console.log(conversationId);
 
-    if (documentContent) {
-      console.log("Document content received, length:", documentContent.length);
+    // ==========================================
+    // FETCH DOCUMENT CONTENT FROM DB (IF ANY)
+    // ==========================================
+    let documentContent = null;
+    if (documentId) {
+      const doc = await prisma.document.findUnique({
+        where: { id: Number(documentId) }
+      });
+      if (doc) {
+        documentContent = doc.extractedText;
+        console.log("Document fetched from DB, length:", documentContent.length);
+      }
     }
 
 

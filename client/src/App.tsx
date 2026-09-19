@@ -446,8 +446,8 @@ async function sendMessage() {
         body: JSON.stringify({
           messages: groqMessages,
           conversationId: activeChatId,
-          // Include document content if a file was uploaded
-          documentContent: extractedText || undefined,
+          // Include document ID if a file is active
+          documentId: activeDocumentId || undefined,
         }),
       }
     );
@@ -566,9 +566,9 @@ async function handleFileUpload(
 
     console.log("Upload response:", data);
 
-    // Store extracted text so it can be sent to Groq
-    if (data.extractedText) {
-      setExtractedText(data.extractedText);
+    // Store the document ID returned from the database
+    if (data.documentId) {
+      setActiveDocumentId(data.documentId);
     }
 
   } catch (error) {
@@ -995,7 +995,7 @@ async function handleFileUpload(
                 className="file-indicator-remove"
                 onClick={() => {
                   setSelectedFile(null);
-                  setExtractedText("");
+                  setActiveDocumentId(null);
                 }}
                 aria-label="Remove file"
               >
