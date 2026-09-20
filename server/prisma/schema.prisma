@@ -31,6 +31,19 @@ model message {
 model user {
   id           Int            @id @default(autoincrement())
   name         String?
+  email        String         @unique
+  password     String?
+  otp          String?
+  otpExpiresAt DateTime?
   createdAt    DateTime       @default(now())
   conversation conversation[]
+}
+
+model document {
+  id             Int          @id @default(autoincrement())
+  filename       String
+  fileType       String
+  storagePath    String
+  extractedText  String       @db.LongText
+  createdAt      DateTime     @default(now())
 }

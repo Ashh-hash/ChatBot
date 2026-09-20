@@ -14,7 +14,41 @@ type Chat = {
   messages: Message[];
 };
 
+import Login from './Login';
+
 function App() {
+  // ==========================================
+  // AUTH STATE & PERSISTENCE
+  // ==========================================
+  const [currentUser, setCurrentUser] = useState<{ id: number; name: string; email: string } | null>(() => {
+    try {
+      const saved = localStorage.getItem("chatbot_user");
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  const handleLoginSuccess = (user: { id: number; name: string; email: string }) => {
+    setCurrentUser(user);
+    try {
+      localStorage.setItem("chatbot_user", JSON.stringify(user));
+    } catch (e) {
+      console.error("Failed to save session:", e);
+    }
+  };
+
+  const handleLogout = () => {
+    setCurrentUser(null);
+    try {
+      localStorage.removeItem("chatbot_user");
+    } catch (e) {
+      console.error("Failed to clear session:", e);
+    }
+    setChats([]);
+    setActiveChatId(null);
+  };
+
   const [message, setMessage] = useState("");
 
   const [darkMode, setDarkMode] = useState(true);
@@ -38,16 +72,19 @@ const [isLoading, setIsLoading] = useState(false);
 const fileInputRef = useRef<HTMLInputElement>(null);
 const [selectedFile, setSelectedFile] = useState<File | null>(null);
 const [isUploading, setIsUploading] = useState(false);
-const [extractedText, setExtractedText] = useState("");
+const [activeDocumentId, setActiveDocumentId] = useState<number | null>(null);
+
   // ==========================================
   // LOAD CONVERSATIONS FROM DATABASE
   // ==========================================
 
   useEffect(() => {
+    if (!currentUser) return;
+
     async function loadConversations() {
       try {
         const response = await fetch(
-          "http://localhost:3000/api/conversations"
+          `http://localhost:3000/api/conversations?userId=${currentUser?.id || 1}`
         );
 
         if (!response.ok) {
@@ -76,6 +113,9 @@ const [extractedText, setExtractedText] = useState("");
 
         if (loadedChats.length > 0) {
           setActiveChatId(loadedChats[0].id);
+        } else {
+          // If user has no conversations, create the first one automatically!
+          createNewChat();
         }
       } catch (error) {
         console.error(
@@ -86,7 +126,7 @@ const [extractedText, setExtractedText] = useState("");
     }
 
     loadConversations();
-  }, []);
+  }, [currentUser?.id]);
 useEffect(() => {
   if (activeChatId === null) {
     return;
@@ -174,7 +214,7 @@ useEffect(() => {
           headers: {
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({}),
+          body: JSON.stringify({ userId: currentUser?.id || 1 }),
         }
       );
 
@@ -258,6 +298,45 @@ useEffect(() => {
     }
   }
 
+  // ==========================================
+  // RENAME CHAT
+  // ==========================================
+
+  async function renameChat(chatId: number) {
+    const currentChat = chats.find((chat) => chat.id === chatId);
+    const newTitle = prompt("Enter new chat title:", currentChat?.title || "");
+    if (!newTitle || newTitle.trim() === "" || newTitle === currentChat?.title) {
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        `http://localhost:3000/api/conversations/${chatId}`,
+        {
+          method: "PATCH",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ title: newTitle.trim() }),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error("Failed to rename conversation");
+      }
+
+      setChats((previousChats) =>
+        previousChats.map((chat) =>
+          chat.id === chatId
+            ? { ...chat, title: newTitle.trim() }
+            : chat
+        )
+      );
+    } catch (error) {
+      console.error("Rename chat error:", error);
+    }
+  }
+
 // ==========================================
 // COPY MESSAGE
 // ==========================================
@@ -282,15 +361,7 @@ async function copyMessage(text: string) {
 
 async function sendMessage() {
   if (message.trim() === "") return;
-
-    if (isLoading) return;// to wait after clicking on send btn
-  // No conversation selected
-  if (activeChatId === null) {
-    console.error(
-      "No active conversation selected."
-    );
-    return;
-  }
+  if (isLoading) return;
 
   setIsLoading(true);
 
@@ -307,128 +378,106 @@ async function sendMessage() {
     sender: "user",
   };
 
+  let currentChatId: number;
 
-  // ==========================================
-  // GET CURRENT CHAT
-  // ==========================================
+  // If user has no active conversation, create one right now!
+  if (activeChatId === null) {
+    try {
+      const convRes = await fetch("http://localhost:3000/api/conversations", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ userId: currentUser?.id || 1 }),
+      });
+      const convData = await convRes.json();
+      currentChatId = Number(convData.conversation.id);
 
-  const currentChat = chats.find(
-    (chat) => chat.id === activeChatId
-  );
-
-  const previousMessages =
-    currentChat?.messages || [];
-
-
-  // ==========================================
-  // ADD USER MESSAGE
-  // ==========================================
-
-  const updatedMessages = [
-    ...previousMessages,
-    userMessage,
-  ];
-
-
-  // ==========================================
-  // UPDATE UI WITH USER MESSAGE
-  // ==========================================
-
-  setChats((previousChats) =>
-    previousChats.map((chat) => {
-
-      if (chat.id !== activeChatId) {
-        return chat;
-      }
-
-      const updatedTitle =
-        chat.messages.length === 0
-          ? currentMessage.length > 25
-            ? currentMessage.substring(0, 25) +
-              "..."
-            : currentMessage
-          : chat.title;
-
-      return {
-        ...chat,
-        title: updatedTitle,
-        messages: updatedMessages,
+      const newChat: Chat = {
+        id: currentChatId,
+        title: currentMessage.length > 25 ? currentMessage.substring(0, 25) + "..." : currentMessage,
+        messages: [userMessage],
       };
-    })
-  );
+
+      setChats((prev) => [newChat, ...prev]);
+      setActiveChatId(currentChatId);
+    } catch (err) {
+      console.error("Failed to create new conversation:", err);
+      setIsLoading(false);
+      return;
+    }
+  } else {
+    currentChatId = activeChatId;
+    // ==========================================
+    // UPDATE UI WITH USER MESSAGE
+    // ==========================================
+    setChats((previousChats) =>
+      previousChats.map((chat) => {
+        if (chat.id !== currentChatId) {
+          return chat;
+        }
+
+        const updatedTitle =
+          chat.messages.length === 0
+            ? currentMessage.length > 25
+              ? currentMessage.substring(0, 25) + "..."
+              : currentMessage
+            : chat.title;
+
+        return {
+          ...chat,
+          title: updatedTitle,
+          messages: [...chat.messages, userMessage],
+        };
+      })
+    );
+  }
 
   setMessage("");
-
 
   // ==========================================
   // SAVE USER MESSAGE TO MYSQL
   // ==========================================
 
   try {
-
     const messageResponse = await fetch(
       "http://localhost:3000/api/messages",
       {
         method: "POST",
-
         headers: {
           "Content-Type": "application/json",
         },
-
         body: JSON.stringify({
           content: displayMessage,
-          conversationId: activeChatId,
+          conversationId: currentChatId,
           role: "user",
         }),
       }
     );
 
     if (!messageResponse.ok) {
-      throw new Error(
-        "Failed to save user message"
-      );
+      throw new Error("Failed to save user message");
     }
-
   } catch (error) {
-
-    console.error(
-      "User message save error:",
-      error
-    );
-
+    console.error("User message save error:", error);
     setIsLoading(false);
-
     return;
   }
-
 
   // ==========================================
   // CONVERT MESSAGES TO GROQ FORMAT
   // ==========================================
 
   try {
+    const currentChat = chats.find((chat) => chat.id === currentChatId);
+    const existingMessages = currentChat?.messages || [];
+    const allMessages = [...existingMessages, userMessage];
 
-    const groqMessages =
-      updatedMessages.map((msg) => ({
-        role:
-          msg.sender === "user"
-            ? "user"
-            : "assistant",
+    const groqMessages = allMessages.map((msg) => ({
+      role: msg.sender === "user" ? "user" : "assistant",
+      content: msg.text,
+    }));
 
-        content: msg.text,
-      }));
-
-
-    console.log(
-      "Sending to backend:",
-      groqMessages
-    );
-
-    console.log(
-      "SENDING CONVERSATION ID:",
-      activeChatId
-    );
-
+    console.log("Sending to backend:", groqMessages);
+    console.log("SENDING CONVERSATION ID:", currentChatId);
 
     // ==========================================
     // CALL BACKEND / GROQ
@@ -438,30 +487,22 @@ async function sendMessage() {
       "http://localhost:3000/api/chat",
       {
         method: "POST",
-
         headers: {
           "Content-Type": "application/json",
         },
-
         body: JSON.stringify({
           messages: groqMessages,
-          conversationId: activeChatId,
-          // Include document ID if a file is active
+          conversationId: currentChatId,
           documentId: activeDocumentId || undefined,
         }),
       }
     );
 
-
     if (!response.ok) {
-      throw new Error(
-        "Backend request failed"
-      );
+      throw new Error("Backend request failed");
     }
 
-
     const data = await response.json();
-
 
     // ==========================================
     // CREATE AI MESSAGE
@@ -472,21 +513,18 @@ async function sendMessage() {
       sender: "ai",
     };
 
-
     // ==========================================
     // ADD AI RESPONSE TO UI
     // ==========================================
 
     setChats((previousChats) =>
       previousChats.map((chat) => {
-
-        if (chat.id !== activeChatId) {
+        if (chat.id !== currentChatId) {
           return chat;
         }
 
         return {
           ...chat,
-
           messages: [
             ...chat.messages,
             aiMessage,
@@ -587,6 +625,10 @@ async function handleFileUpload(
   // UI
   // ==========================================
 
+  if (!currentUser) {
+    return <Login onLoginSuccess={handleLoginSuccess} darkMode={darkMode} />;
+  }
+
   return (
     <div
       className={
@@ -617,64 +659,70 @@ async function handleFileUpload(
         </div>
 
 
-        {/* New Chat */}
+        {/* New Chat Button */}
 
         <button
-          className="new-chat"
+          className="new-chat-button"
           onClick={createNewChat}
         >
 
-          <span className="plus-icon">
+          <span className="plus">
             +
           </span>
 
-          New Chat
+          <span>
+            New Chat
+          </span>
 
         </button>
 
 
-        {/* Chat History */}
+        {/* Chat History List */}
 
-        <div className="history">
-
-          <p className="history-title">
-            Recent
-          </p>
-
+        <div className="chat-list">
 
           {chats.map((chat) => (
 
             <div
+              key={chat.id}
               className={
                 chat.id === activeChatId
-                  ? "chat-item-wrapper active"
-                  : "chat-item-wrapper"
+                  ? "chat-item active"
+                  : "chat-item"
               }
-
-              key={chat.id}
+              onClick={() =>
+                setActiveChatId(chat.id)
+              }
             >
 
-              {/* Chat button */}
+              <span className="chat-item-icon">
+                💬
+              </span>
+
+              {/* Chat Title */}
+
+              <span className="chat-item-title">
+                {chat.title}
+              </span>
+
+
+              {/* Rename button */}
 
               <button
-                className={
-                  chat.id === activeChatId
-                    ? "chat-item active"
-                    : "chat-item"
-                }
+                className="rename-chat"
 
-                onClick={() =>
-                  setActiveChatId(chat.id)
-                }
+                onClick={(event) => {
+                  event.stopPropagation();
+
+                  renameChat(chat.id);
+                }}
+
+                title="Rename chat"
+
+                aria-label="Rename chat"
               >
 
-                <span className="chat-icon">
-                  💬
-                </span>
-
-                <span className="chat-title">
-                  {chat.title}
-                </span>
+                ✏️
 
               </button>
 
@@ -745,6 +793,87 @@ async function handleFileUpload(
 
             </button>
 
+          </div>
+
+          {/* User Profile & Logout */}
+          <div className="user-profile" style={{
+            marginTop: '12px', 
+            padding: '10px 12px', 
+            background: darkMode ? '#2a2b32' : '#f0f2f5',
+            borderRadius: '10px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: '8px',
+            border: darkMode ? '1px solid #3d3e48' : '1px solid #e1e4ea'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', overflow: 'hidden' }}>
+              <div className="user-avatar" style={{
+                width: '32px', 
+                height: '32px', 
+                fontSize: '14px', 
+                fontWeight: 'bold',
+                background: '#10a37f',
+                color: '#fff',
+                borderRadius: '50%',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                flexShrink: 0
+              }}>
+                {(currentUser?.name || currentUser?.email || 'U').charAt(0).toUpperCase()}
+              </div>
+              <div style={{ display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+                <span style={{
+                  fontSize: '13px', 
+                  fontWeight: '600', 
+                  color: darkMode ? '#f0f0f0' : '#222',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis'
+                }}>
+                  {currentUser?.name || currentUser?.email?.split('@')[0] || 'User'}
+                </span>
+                <span style={{
+                  fontSize: '11px', 
+                  color: darkMode ? '#8e8ea0' : '#71767b',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis'
+                }}>
+                  {currentUser?.email}
+                </span>
+              </div>
+            </div>
+
+            <button
+              onClick={handleLogout}
+              title="Log out"
+              aria-label="Log out"
+              style={{
+                background: 'transparent',
+                border: 'none',
+                cursor: 'pointer',
+                fontSize: '16px',
+                padding: '6px',
+                borderRadius: '6px',
+                color: darkMode ? '#c5c5d2' : '#6e6e80',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                transition: 'background 0.2s, color 0.2s'
+              }}
+              onMouseEnter={(e) => {
+                e.currentTarget.style.background = darkMode ? '#3e3f4b' : '#e4e6ea';
+                e.currentTarget.style.color = '#ff5c5c';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background = 'transparent';
+                e.currentTarget.style.color = darkMode ? '#c5c5d2' : '#6e6e80';
+              }}
+            >
+              🚪
+            </button>
           </div>
 
         </div>

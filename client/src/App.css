@@ -149,12 +149,17 @@ input {
    HISTORY
 ========================================== */
 
-.history {
+.history,
+.chat-list {
   flex: 1;
 
-  margin-top: 25px;
+  margin-top: 15px;
 
   overflow-y: auto;
+
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .history-title {
@@ -237,69 +242,67 @@ input {
   color: #111111;
 }
 
-.chat-icon {
-  font-size: 14px;
-}
-
+.chat-item-title,
 .chat-title {
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
-
   white-space: nowrap;
-
   text-overflow: ellipsis;
 }
 
-
 /* ==========================================
-   DELETE CHAT
+   CHAT ACTION BUTTONS (RENAME & DELETE)
 ========================================== */
 
+.rename-chat,
 .delete-chat {
-  width: 34px;
-  height: 34px;
-
+  width: 28px;
+  height: 28px;
   flex-shrink: 0;
-
   display: flex;
   align-items: center;
   justify-content: center;
-
   border: none;
-
-  border-radius: 7px;
-
+  border-radius: 6px;
   background: transparent;
-
-  color: #888888;
-
   cursor: pointer;
-
-  opacity: 0;
-
-  font-size: 14px;
-
-  transition:
-    opacity 0.2s ease,
-    background 0.2s ease;
+  opacity: 0.6;
+  font-size: 13px;
+  transition: opacity 0.2s ease, background 0.2s ease, transform 0.15s ease;
+  padding: 0;
+  margin-left: 2px;
 }
 
-.chat-item-wrapper:hover .delete-chat {
+.chat-item:hover .rename-chat,
+.chat-item:hover .delete-chat,
+.chat-item.active .rename-chat,
+.chat-item.active .delete-chat {
   opacity: 1;
 }
 
+.rename-chat:hover,
 .delete-chat:hover {
-  background: #dcdcdc;
+  background: rgba(0, 0, 0, 0.1);
+  transform: scale(1.1);
 }
 
+.app.dark .rename-chat:hover,
+.app.dark .delete-chat:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
 
 /* ==========================================
    SIDEBAR BOTTOM
 ========================================== */
 
 .sidebar-bottom {
-  padding-top: 15px;
-
+  margin-top: auto;
+  padding-top: 14px;
   border-top: 1px solid #dedede;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
 }
 
 .theme-container {
@@ -1267,4 +1270,94 @@ input {
   .suggestions {
     display: none;
   }
+}
+
+/* ==========================================
+   FLUID & DYNAMIC MICRO-INTERACTIONS
+   ========================================== */
+
+.message-row {
+  animation: messageFadeIn 0.3s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+@keyframes messageFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.chat-item {
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.chat-item:hover {
+  transform: translateX(3px);
+}
+
+.new-chat-button, .new-chat {
+  transition: all 0.2s ease;
+}
+
+.new-chat-button:hover, .new-chat:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.send-button {
+  transition: transform 0.15s ease, background 0.2s ease, opacity 0.2s ease;
+}
+
+.send-button.active:hover {
+  transform: scale(1.06);
+}
+
+.send-button:active {
+  transform: scale(0.95);
+}
+
+.file-indicator {
+  animation: popIn 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@keyframes popIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.95) translateY(4px);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+/* Sleek custom scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 999px;
+}
+
+.app.dark ::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(0, 0, 0, 0.3);
+}
+
+.app.dark ::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.3);
 }
