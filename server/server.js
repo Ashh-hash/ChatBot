@@ -2,7 +2,6 @@ const express = require("express");
 const cors = require("cors");
 const Groq = require("groq-sdk");
 const { PrismaClient } = require("@prisma/client");
-const { PrismaMariaDb } = require("@prisma/adapter-mariadb");
 
 require("dotenv").config();
 
@@ -16,7 +15,49 @@ app.use(express.json());
 // PRISMA + DATABASE SETUP
 // ==========================================
 
-const prisma = new PrismaClient();
+const dbUrl = process.env.DATABASE_URL;
+let prisma;
+
+// TiDB Cloud Serverless uses HTTPS (not TCP), so we use @tidbcloud/prisma-adapter
+// This avoids the "pool timeout: active=0 idle=0" error from mariadb TCP driver
+if (dbUrl && dbUrl.includes("tidbcloud.com")) {
+  try {
+    const { PrismaTiDBCloud } = require("@tidbcloud/prisma-adapter");
+    const parsed = new URL(dbUrl);
+    const adapter = new PrismaTiDBCloud({
+      url: dbUrl,
+      username: decodeURIComponent(parsed.username),
+      password: decodeURIComponent(parsed.password),
+      host: parsed.hostname,
+      database: parsed.pathname.replace(/^\//, "").split("?")[0],
+    });
+    prisma = new PrismaClient({ adapter });
+    console.log("Using TiDB Cloud HTTPS adapter");
+  } catch (err) {
+    console.error("TiDB Cloud adapter setup error:", err);
+  }
+}
+
+// Local MySQL fallback using mariadb driver
+if (!prisma) {
+  try {
+    const { PrismaMariaDb } = require("@prisma/adapter-mariadb");
+    const mariadb = require("mariadb");
+    const pool = mariadb.createPool({
+      host: process.env.DATABASE_HOST || "127.0.0.1",
+      port: Number(process.env.DATABASE_PORT) || 3306,
+      user: process.env.DATABASE_USER || "root",
+      password: process.env.DATABASE_PASSWORD || "",
+      database: process.env.DATABASE_NAME || "chatbot",
+      connectionLimit: 10,
+    });
+    const adapter = new PrismaMariaDb(pool);
+    prisma = new PrismaClient({ adapter });
+    console.log("Using local MariaDB adapter");
+  } catch (err) {
+    console.error("Local DB adapter setup error:", err);
+  }
+}
 
 
 // ==========================================
@@ -92,31 +133,89 @@ app.post("/api/auth/signup", async (req, res) => {
       return res.status(400).json({ error: "Email and password are required" });
     }
 
-    // Check if user already exists
+    // Check if user already exists AND is fully verified (password set, no pending OTP)
     const existing = await prisma.user.findUnique({ where: { email } });
-    if (existing && existing.password) {
+    if (existing && existing.password && !existing.otp) {
       return res.status(400).json({ error: "An account with this email already exists. Please Sign In." });
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    const user = await prisma.user.upsert({
+    // Generate OTP for email verification
+    const otp = Math.floor(100000 + Math.random() * 900000).toString();
+    const otpExpiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 minutes
+
+    // Save pending user with OTP (not fully registered yet)
+    await prisma.user.upsert({
       where: { email },
-      update: { name: name || undefined, password: hashedPassword },
-      create: { email, name: name || "User", password: hashedPassword },
+      update: { name: name || "User", password: hashedPassword, otp, otpExpiresAt },
+      create: { email, name: name || "User", password: hashedPassword, otp, otpExpiresAt },
     });
 
-    console.log(`✅ User registered with password: ${user.email} (ID: ${user.id})`);
+    console.log("----------------------------------------");
+    console.log(`🔐 Signup OTP for ${email}: ${otp}`);
+    console.log("----------------------------------------");
+
+    // Send OTP email
+    if (process.env.EMAIL_USER && process.env.EMAIL_PASS) {
+      try {
+        await transporter.sendMail({
+          from: `"ChatBot AI" <${process.env.EMAIL_USER}>`,
+          to: email,
+          subject: "Verify your ChatBot Account",
+          html: `
+            <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 460px; margin: 0 auto; padding: 28px; border: 1px solid #e2e8f0; border-radius: 16px; background: #ffffff;">
+              <h2 style="color: #0f172a; margin-top: 0; margin-bottom: 8px; font-size: 22px;">Verify your account</h2>
+              <p style="color: #475569; font-size: 14px; line-height: 1.5; margin-bottom: 24px;">Enter this 6-digit code to complete your registration:</p>
+              <div style="text-align: center; padding: 18px; background: #f8fafc; border: 1.5px dashed #cbd5e1; border-radius: 12px; font-size: 32px; font-weight: 800; letter-spacing: 8px; color: #10a37f; margin-bottom: 24px;">
+                ${otp}
+              </div>
+              <p style="color: #94a3b8; font-size: 12px; margin: 0; line-height: 1.5;">This code expires in 10 minutes. If you did not create an account, ignore this email.</p>
+            </div>
+          `,
+        });
+        console.log(`✉️ Signup OTP email sent to ${email}`);
+      } catch (mailError) {
+        console.warn("Could not send signup OTP email:", mailError.message);
+      }
+    }
+
+    res.json({ message: "OTP sent to email. Please verify to complete registration." });
+  } catch (error) {
+    console.error("Sign up error:", error);
+    res.status(500).json({ error: "Failed to create account" });
+  }
+});
+
+// Verify OTP and complete signup
+app.post("/api/auth/signup-verify-otp", async (req, res) => {
+  const { email, otp } = req.body;
+
+  try {
+    const user = await prisma.user.findUnique({ where: { email } });
+
+    if (!user || user.otp !== otp || !user.otpExpiresAt || user.otpExpiresAt < new Date()) {
+      return res.status(400).json({ error: "Invalid or expired OTP. Please try again." });
+    }
+
+    // Clear OTP — account is now verified
+    await prisma.user.update({
+      where: { id: user.id },
+      data: { otp: null, otpExpiresAt: null },
+    });
+
+    console.log(`✅ User signup verified: ${user.email} (ID: ${user.id})`);
 
     res.json({
       message: "Account created successfully",
       user: { id: user.id, name: user.name, email: user.email },
     });
   } catch (error) {
-    console.error("Sign up error:", error);
-    res.status(500).json({ error: "Failed to create account" });
+    console.error("Signup OTP verify error:", error);
+    res.status(500).json({ error: "Failed to verify OTP" });
   }
 });
+
 
 app.post("/api/auth/login", async (req, res) => {
   const { email, password } = req.body;

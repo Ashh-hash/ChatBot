@@ -10,17 +10,17 @@ interface LoginProps {
 
 export default function Login({ onLoginSuccess, darkMode }: LoginProps) {
   const [isSignUp, setIsSignUp] = useState(false);
-  const [useOtpMode, setUseOtpMode] = useState(false);
-  
+
   // Fields
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  
-  // OTP flow state
-  const [otpSent, setOtpSent] = useState(false);
+
+  // Sign Up OTP step
+  const [signupOtpSent, setSignupOtpSent] = useState(false);
   const [otp, setOtp] = useState("");
+
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
@@ -28,95 +28,82 @@ export default function Login({ onLoginSuccess, darkMode }: LoginProps) {
   const [showGoogleModal, setShowGoogleModal] = useState(false);
   const [googleEmail, setGoogleEmail] = useState("");
   const [googleName, setGoogleName] = useState("");
+  const [googleOtpSent, setGoogleOtpSent] = useState(false);
+  const [googleOtp, setGoogleOtp] = useState("");
 
   // ==========================================
-  // PASSWORD AUTH (SIGN UP & SIGN IN)
+  // LOGIN: email + password only
   // ==========================================
-
-  const handlePasswordSubmit = async (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setErrorMsg("");
 
-    if (isSignUp && password !== confirmPassword) {
-      setErrorMsg("Passwords do not match. Please try again.");
-      setLoading(false);
-      return;
-    }
-
-    if (password.length < 6) {
-      setErrorMsg("Password must be at least 6 characters long.");
-      setLoading(false);
-      return;
-    }
-
     try {
-      const endpoint = isSignUp 
-        ? `${API_URL}/api/auth/signup` 
-        : `${API_URL}/api/auth/login`;
-
-      const res = await fetch(endpoint, {
+      const res = await fetch(`${API_URL}/api/auth/login`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: isSignUp ? name : undefined,
-          email: email.trim(),
-          password: password,
-        }),
+        body: JSON.stringify({ email: email.trim(), password }),
       });
-
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Authentication failed");
-
+      if (!res.ok) throw new Error(data.error || "Login failed");
       onLoginSuccess(data.user);
     } catch (err: any) {
-      setErrorMsg(err.message || "Failed to authenticate");
+      setErrorMsg(err.message || "Failed to log in");
     } finally {
       setLoading(false);
     }
   };
 
   // ==========================================
-  // OTP AUTH FLOW
+  // SIGN UP STEP 1: Send OTP to email
   // ==========================================
-
-  const handleSendOtp = async (e: React.FormEvent) => {
+  const handleSignupSendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
-    setLoading(true);
     setErrorMsg("");
-    
+
+    if (password !== confirmPassword) {
+      setErrorMsg("Passwords do not match. Please try again.");
+      return;
+    }
+    if (password.length < 6) {
+      setErrorMsg("Password must be at least 6 characters long.");
+      return;
+    }
+
+    setLoading(true);
     try {
-      const res = await fetch(`${API_URL}/api/auth/send-otp`, {
+      const res = await fetch(`${API_URL}/api/auth/signup`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: isSignUp ? name : undefined, email: email.trim() })
+        body: JSON.stringify({ name, email: email.trim(), password }),
       });
-      
-      if (!res.ok) throw new Error("Failed to send OTP");
-      
-      setOtpSent(true);
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Failed to send OTP");
+      setSignupOtpSent(true);
     } catch (err: any) {
-      setErrorMsg(err.message || "Error sending OTP. Make sure backend is running.");
+      setErrorMsg(err.message || "Failed to send verification email");
     } finally {
       setLoading(false);
     }
   };
 
-  const handleVerifyOtp = async (e: React.FormEvent) => {
+  // ==========================================
+  // SIGN UP STEP 2: Verify OTP → create account
+  // ==========================================
+  const handleSignupVerifyOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setErrorMsg("");
 
     try {
-      const res = await fetch(`${API_URL}/api/auth/verify-otp`, {
+      const res = await fetch(`${API_URL}/api/auth/signup-verify-otp`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email: email.trim(), otp: otp.trim() })
+        body: JSON.stringify({ email: email.trim(), otp: otp.trim() }),
       });
-      
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Invalid OTP");
-      
       onLoginSuccess(data.user);
     } catch (err: any) {
       setErrorMsg(err.message || "Failed to verify OTP");
@@ -125,15 +112,15 @@ export default function Login({ onLoginSuccess, darkMode }: LoginProps) {
     }
   };
 
-  const handleGoogleSubmit = async (e: React.FormEvent) => {
+  // ==========================================
+  // GOOGLE: send OTP then verify
+  // ==========================================
+  const handleGoogleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setErrorMsg("");
 
-    const targetEmail = googleEmail.trim();
-    const targetName = googleName.trim();
-
-    if (!targetEmail) {
+    if (!googleEmail.trim()) {
       setErrorMsg("Please enter your email address");
       setLoading(false);
       return;
@@ -143,16 +130,10 @@ export default function Login({ onLoginSuccess, darkMode }: LoginProps) {
       const res = await fetch(`${API_URL}/api/auth/send-otp`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: targetName || undefined, email: targetEmail })
+        body: JSON.stringify({ name: googleName.trim() || undefined, email: googleEmail.trim() }),
       });
-
-      if (!res.ok) throw new Error("Failed to send OTP to Google account");
-
-      setEmail(targetEmail);
-      if (targetName) setName(targetName);
-      setShowGoogleModal(false);
-      setUseOtpMode(true);
-      setOtpSent(true);
+      if (!res.ok) throw new Error("Failed to send OTP");
+      setGoogleOtpSent(true);
     } catch (err: any) {
       setErrorMsg(err.message || "Failed to send OTP");
     } finally {
@@ -160,25 +141,70 @@ export default function Login({ onLoginSuccess, darkMode }: LoginProps) {
     }
   };
 
+  const handleGoogleVerifyOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setErrorMsg("");
+
+    try {
+      const res = await fetch(`${API_URL}/api/auth/verify-otp`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ email: googleEmail.trim(), otp: googleOtp.trim() }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Invalid OTP");
+      onLoginSuccess(data.user);
+    } catch (err: any) {
+      setErrorMsg(err.message || "Failed to verify OTP");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const resetAll = () => {
+    setIsSignUp(false);
+    setSignupOtpSent(false);
+    setOtp("");
+    setPassword("");
+    setConfirmPassword("");
+    setName("");
+    setEmail("");
+    setErrorMsg("");
+  };
+
   return (
     <div className={darkMode ? "app dark" : "app"}>
       <div className="login-container">
         <div className="login-box">
-          <h2>{useOtpMode && otpSent ? "Verify Email" : isSignUp ? "Create an Account" : "Welcome Back"}</h2>
+
+          {/* TITLE */}
+          <h2>
+            {signupOtpSent
+              ? "Verify Your Email"
+              : isSignUp
+              ? "Create an Account"
+              : "Welcome Back"}
+          </h2>
           <p className="login-subtitle">
-            {useOtpMode && otpSent 
-              ? `Enter the 6-digit code sent to ${email}` 
-              : isSignUp ? "Sign up to start chatting." : "Sign in with your email and password."}
+            {signupOtpSent
+              ? `Enter the 6-digit code sent to ${email}`
+              : isSignUp
+              ? "Sign up to start chatting."
+              : "Sign in with your email and password."}
           </p>
 
-          {!otpSent && (
+          {/* Google button — only on first screen */}
+          {!signupOtpSent && (
             <>
-              <button 
-                type="button" 
+              <button
+                type="button"
                 className="google-btn"
                 onClick={() => {
                   setGoogleEmail(email || "");
                   setGoogleName(name || "");
+                  setGoogleOtpSent(false);
+                  setGoogleOtp("");
                   setShowGoogleModal(true);
                 }}
               >
@@ -192,10 +218,11 @@ export default function Login({ onLoginSuccess, darkMode }: LoginProps) {
             </>
           )}
 
+          {/* Error message */}
           {errorMsg && (
             <div style={{
-              color: '#ef4444', 
-              fontSize: '13px', 
+              color: '#ef4444',
+              fontSize: '13px',
               marginBottom: '16px',
               padding: '8px 12px',
               background: darkMode ? 'rgba(239, 68, 68, 0.12)' : '#fee2e2',
@@ -207,22 +234,53 @@ export default function Login({ onLoginSuccess, darkMode }: LoginProps) {
           )}
 
           {/* ==========================================
-              FORM 1: PASSWORD AUTH (STANDARD)
+              LOGIN FORM — email + password only
               ========================================== */}
-          {!useOtpMode && (
-            <form onSubmit={handlePasswordSubmit} className="login-form">
-              {isSignUp && (
-                <div className="input-group">
-                  <label>User Name</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="e.g. Ashish Sharma"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                  />
-                </div>
-              )}
+          {!isSignUp && (
+            <form onSubmit={handleLogin} className="login-form">
+              <div className="input-group">
+                <label>Email Address</label>
+                <input
+                  type="email"
+                  required
+                  placeholder="you@example.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                />
+              </div>
+
+              <div className="input-group">
+                <label>Password</label>
+                <input
+                  type="password"
+                  required
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                />
+              </div>
+
+              <button type="submit" className="submit-btn" disabled={loading}>
+                {loading ? "Please wait..." : "Sign In"}
+              </button>
+            </form>
+          )}
+
+          {/* ==========================================
+              SIGN UP STEP 1 — fill form → send OTP
+              ========================================== */}
+          {isSignUp && !signupOtpSent && (
+            <form onSubmit={handleSignupSendOtp} className="login-form">
+              <div className="input-group">
+                <label>User Name</label>
+                <input
+                  type="text"
+                  required
+                  placeholder="e.g. Ashish Sharma"
+                  value={name}
+                  onChange={(e) => setName(e.target.value)}
+                />
+              </div>
 
               <div className="input-group">
                 <label>Email Address</label>
@@ -246,114 +304,79 @@ export default function Login({ onLoginSuccess, darkMode }: LoginProps) {
                 />
               </div>
 
-              {isSignUp && (
-                <div className="input-group">
-                  <label>Confirm Password</label>
-                  <input
-                    type="password"
-                    required
-                    placeholder="••••••••"
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                  />
-                </div>
-              )}
+              <div className="input-group">
+                <label>Confirm Password</label>
+                <input
+                  type="password"
+                  required
+                  placeholder="••••••••"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                />
+              </div>
 
               <button type="submit" className="submit-btn" disabled={loading}>
-                {loading ? "Please wait..." : isSignUp ? "Create Account" : "Sign In"}
-              </button>
-
-              <button 
-                type="button" 
-                onClick={() => { setUseOtpMode(true); setErrorMsg(""); }}
-                style={{
-                  background: 'none', 
-                  border: 'none', 
-                  color: '#10a37f', 
-                  fontSize: '13px', 
-                  cursor: 'pointer',
-                  marginTop: '6px',
-                  fontWeight: '500'
-                }}
-              >
-                🔐 Sign in with OTP code instead
+                {loading ? "Sending verification code..." : "Create Account"}
               </button>
             </form>
           )}
 
           {/* ==========================================
-              FORM 2: OTP CODE AUTH
+              SIGN UP STEP 2 — enter OTP to verify
               ========================================== */}
-          {useOtpMode && (
-            <form onSubmit={otpSent ? handleVerifyOtp : handleSendOtp} className="login-form">
-              {!otpSent ? (
-                <>
-                  <div className="input-group">
-                    <label>Email Address</label>
-                    <input
-                      type="email"
-                      required
-                      placeholder="you@example.com"
-                      value={email}
-                      onChange={(e) => setEmail(e.target.value)}
-                    />
-                  </div>
-                </>
-              ) : (
-                <div className="input-group">
-                  <label>6-Digit OTP Code</label>
-                  <input
-                    type="text"
-                    required
-                    maxLength={6}
-                    placeholder="123456"
-                    value={otp}
-                    onChange={(e) => setOtp(e.target.value)}
-                    style={{ letterSpacing: '6px', textAlign: 'center', fontSize: '22px', fontWeight: 'bold' }}
-                  />
-                </div>
-              )}
+          {isSignUp && signupOtpSent && (
+            <form onSubmit={handleSignupVerifyOtp} className="login-form">
+              <div className="input-group">
+                <label>6-Digit Verification Code</label>
+                <input
+                  type="text"
+                  required
+                  maxLength={6}
+                  placeholder="123456"
+                  value={otp}
+                  onChange={(e) => setOtp(e.target.value)}
+                  style={{ letterSpacing: '6px', textAlign: 'center', fontSize: '22px', fontWeight: 'bold' }}
+                />
+              </div>
 
               <button type="submit" className="submit-btn" disabled={loading}>
-                {loading ? "Please wait..." : otpSent ? "Verify & Log In" : "Send OTP"}
+                {loading ? "Verifying..." : "Verify & Create Account"}
               </button>
 
-              <button 
-                type="button" 
-                onClick={() => { setUseOtpMode(false); setOtpSent(false); setErrorMsg(""); }}
+              <button
+                type="button"
+                onClick={() => { setSignupOtpSent(false); setOtp(""); setErrorMsg(""); }}
                 style={{
-                  background: 'none', 
-                  border: 'none', 
-                  color: '#10a37f', 
-                  fontSize: '13px', 
-                  cursor: 'pointer',
-                  marginTop: '6px',
-                  fontWeight: '500'
+                  background: 'none', border: 'none', color: '#10a37f',
+                  fontSize: '13px', cursor: 'pointer', marginTop: '6px', fontWeight: '500'
                 }}
               >
-                🔑 Use Password instead
+                ← Back / Resend Code
               </button>
             </form>
           )}
 
-          {/* Toggle between Sign In & Sign Up */}
-          {!otpSent && (
+          {/* Toggle Sign In / Sign Up */}
+          {!signupOtpSent && (
             <p className="toggle-text">
               {isSignUp ? "Already have an account? " : "Don't have an account? "}
-              <button 
-                className="toggle-btn" 
-                type="button" 
+              <button
+                className="toggle-btn"
+                type="button"
                 onClick={() => {
                   setIsSignUp(!isSignUp);
                   setErrorMsg("");
                   setPassword("");
                   setConfirmPassword("");
+                  setSignupOtpSent(false);
+                  setOtp("");
                 }}
               >
                 {isSignUp ? "Sign In" : "Sign Up"}
               </button>
             </p>
           )}
+
         </div>
       </div>
 
@@ -363,49 +386,68 @@ export default function Login({ onLoginSuccess, darkMode }: LoginProps) {
           <div className="google-modal" onClick={(e) => e.stopPropagation()}>
             <img src="https://www.svgrepo.com/show/475656/google-color.svg" alt="Google" style={{width: '36px', marginBottom: '10px'}} />
             <h3 style={{margin: '0 0 6px 0', fontSize: '18px'}}>Continue with Google</h3>
-            <p style={{fontSize: '13px', color: '#64748b', margin: '0 0 16px 0'}}>Enter your details to receive a verification code:</p>
+            <p style={{fontSize: '13px', color: '#64748b', margin: '0 0 16px 0'}}>
+              {googleOtpSent ? `Enter the code sent to ${googleEmail}` : "Enter your details to receive a verification code:"}
+            </p>
 
-            <form onSubmit={handleGoogleSubmit} style={{display: 'flex', flexDirection: 'column', gap: '12px', textAlign: 'left'}}>
-              <div className="input-group">
-                <label>User Name</label>
-                <input
-                  type="text"
-                  placeholder="e.g. Ashish Sharma"
-                  value={googleName}
-                  onChange={(e) => setGoogleName(e.target.value)}
-                />
+            {errorMsg && (
+              <div style={{color:'#ef4444', fontSize:'13px', marginBottom:'12px', padding:'8px 12px', background:'rgba(239,68,68,0.1)', borderRadius:'8px'}}>
+                {errorMsg}
               </div>
+            )}
 
-              <div className="input-group">
-                <label>Email Address</label>
-                <input
-                  type="email"
-                  required
-                  placeholder="your.google@gmail.com"
-                  value={googleEmail}
-                  onChange={(e) => setGoogleEmail(e.target.value)}
-                />
-              </div>
-
-              <button type="submit" className="submit-btn" style={{marginTop: '10px'}} disabled={loading}>
-                {loading ? "Sending Code..." : "Send OTP to Email"}
-              </button>
-
-              <button 
-                type="button" 
-                onClick={() => setShowGoogleModal(false)}
-                style={{
-                  background: 'none', 
-                  border: 'none', 
-                  color: '#64748b', 
-                  cursor: 'pointer',
-                  fontSize: '13px',
-                  marginTop: '4px'
-                }}
-              >
-                Cancel
-              </button>
-            </form>
+            {!googleOtpSent ? (
+              <form onSubmit={handleGoogleSendOtp} style={{display: 'flex', flexDirection: 'column', gap: '12px', textAlign: 'left'}}>
+                <div className="input-group">
+                  <label>User Name</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. Ashish Sharma"
+                    value={googleName}
+                    onChange={(e) => setGoogleName(e.target.value)}
+                  />
+                </div>
+                <div className="input-group">
+                  <label>Email Address</label>
+                  <input
+                    type="email"
+                    required
+                    placeholder="your.google@gmail.com"
+                    value={googleEmail}
+                    onChange={(e) => setGoogleEmail(e.target.value)}
+                  />
+                </div>
+                <button type="submit" className="submit-btn" style={{marginTop: '10px'}} disabled={loading}>
+                  {loading ? "Sending Code..." : "Send OTP to Email"}
+                </button>
+                <button type="button" onClick={() => setShowGoogleModal(false)}
+                  style={{background:'none', border:'none', color:'#64748b', cursor:'pointer', fontSize:'13px', marginTop:'4px'}}>
+                  Cancel
+                </button>
+              </form>
+            ) : (
+              <form onSubmit={handleGoogleVerifyOtp} style={{display: 'flex', flexDirection: 'column', gap: '12px', textAlign: 'left'}}>
+                <div className="input-group">
+                  <label>6-Digit OTP Code</label>
+                  <input
+                    type="text"
+                    required
+                    maxLength={6}
+                    placeholder="123456"
+                    value={googleOtp}
+                    onChange={(e) => setGoogleOtp(e.target.value)}
+                    style={{letterSpacing:'6px', textAlign:'center', fontSize:'22px', fontWeight:'bold'}}
+                  />
+                </div>
+                <button type="submit" className="submit-btn" style={{marginTop: '10px'}} disabled={loading}>
+                  {loading ? "Verifying..." : "Verify & Sign In"}
+                </button>
+                <button type="button" onClick={() => { setGoogleOtpSent(false); setGoogleOtp(""); setErrorMsg(""); }}
+                  style={{background:'none', border:'none', color:'#10a37f', cursor:'pointer', fontSize:'13px', marginTop:'4px', fontWeight:'500'}}>
+                  ← Back / Resend
+                </button>
+              </form>
+            )}
           </div>
         </div>
       )}
