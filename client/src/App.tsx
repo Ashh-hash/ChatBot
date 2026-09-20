@@ -16,6 +16,8 @@ type Chat = {
 
 import Login from './Login';
 
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
+
 function App() {
   // ==========================================
   // AUTH STATE & PERSISTENCE
@@ -84,7 +86,7 @@ const [activeDocumentId, setActiveDocumentId] = useState<number | null>(null);
     async function loadConversations() {
       try {
         const response = await fetch(
-          `http://localhost:3000/api/conversations?userId=${currentUser?.id || 1}`
+          `${API_URL}/api/conversations?userId=${currentUser?.id || 1}`
         );
 
         if (!response.ok) {
@@ -135,7 +137,7 @@ useEffect(() => {
   async function loadMessages() {
     try {
       const response = await fetch(
-        `http://localhost:3000/api/conversations/${activeChatId}/messages`
+        `${API_URL}/api/conversations/${activeChatId}/messages`
       );
 
       if (!response.ok) {
@@ -208,7 +210,7 @@ useEffect(() => {
   async function createNewChat() {
     try {
       const response = await fetch(
-        "http://localhost:3000/api/conversations",
+        `${API_URL}/api/conversations`,
         {
           method: "POST",
           headers: {
@@ -263,7 +265,7 @@ useEffect(() => {
   async function deleteChat(chatId: number) {
     try {
       const response = await fetch(
-        `http://localhost:3000/api/conversations/${chatId}`,
+        `${API_URL}/api/conversations/${chatId}`,
         {
           method: "DELETE",
         }
@@ -279,7 +281,7 @@ useEffect(() => {
         (chat) => chat.id !== chatId
       );
 
-      setChats(remainingChats);
+      setChats((remainingChats) => remainingChats.filter(chat => chat.id !== chatId));
 
       if (activeChatId === chatId) {
         if (remainingChats.length > 0) {
@@ -311,7 +313,7 @@ useEffect(() => {
 
     try {
       const response = await fetch(
-        `http://localhost:3000/api/conversations/${chatId}`,
+        `${API_URL}/api/conversations/${chatId}`,
         {
           method: "PATCH",
           headers: {
@@ -383,7 +385,7 @@ async function sendMessage() {
   // If user has no active conversation, create one right now!
   if (activeChatId === null) {
     try {
-      const convRes = await fetch("http://localhost:3000/api/conversations", {
+      const convRes = await fetch(`${API_URL}/api/conversations`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ userId: currentUser?.id || 1 }),
@@ -439,7 +441,7 @@ async function sendMessage() {
 
   try {
     const messageResponse = await fetch(
-      "http://localhost:3000/api/messages",
+      `${API_URL}/api/messages`,
       {
         method: "POST",
         headers: {
@@ -484,7 +486,7 @@ async function sendMessage() {
     // ==========================================
 
     const response = await fetch(
-      "http://localhost:3000/api/chat",
+      `${API_URL}/api/chat`,
       {
         method: "POST",
         headers: {
@@ -586,7 +588,7 @@ async function handleFileUpload(
     formData.append("file", file);
 
     const response = await fetch(
-      "http://localhost:3000/api/upload",
+      `${API_URL}/api/upload`,
       {
         method: "POST",
         body: formData,

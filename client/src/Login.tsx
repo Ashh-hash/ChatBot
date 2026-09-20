@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import './Login.css';
 
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:3000";
+
 interface LoginProps {
   onLoginSuccess: (user: { id: number; name: string; email: string }) => void;
   darkMode: boolean;
@@ -50,8 +52,8 @@ export default function Login({ onLoginSuccess, darkMode }: LoginProps) {
 
     try {
       const endpoint = isSignUp 
-        ? "http://localhost:3000/api/auth/signup" 
-        : "http://localhost:3000/api/auth/login";
+        ? `${API_URL}/api/auth/signup` 
+        : `${API_URL}/api/auth/login`;
 
       const res = await fetch(endpoint, {
         method: "POST",
@@ -84,7 +86,7 @@ export default function Login({ onLoginSuccess, darkMode }: LoginProps) {
     setErrorMsg("");
     
     try {
-      const res = await fetch("http://localhost:3000/api/auth/send-otp", {
+      const res = await fetch(`${API_URL}/api/auth/send-otp`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: isSignUp ? name : undefined, email: email.trim() })
@@ -106,7 +108,7 @@ export default function Login({ onLoginSuccess, darkMode }: LoginProps) {
     setErrorMsg("");
 
     try {
-      const res = await fetch("http://localhost:3000/api/auth/verify-otp", {
+      const res = await fetch(`${API_URL}/api/auth/verify-otp`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email: email.trim(), otp: otp.trim() })
@@ -138,7 +140,7 @@ export default function Login({ onLoginSuccess, darkMode }: LoginProps) {
     }
 
     try {
-      const res = await fetch("http://localhost:3000/api/auth/send-otp", {
+      const res = await fetch(`${API_URL}/api/auth/send-otp`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ name: targetName || undefined, email: targetEmail })
