@@ -162,17 +162,6 @@ export default function Login({ onLoginSuccess, darkMode }: LoginProps) {
     }
   };
 
-  const resetAll = () => {
-    setIsSignUp(false);
-    setSignupOtpSent(false);
-    setOtp("");
-    setPassword("");
-    setConfirmPassword("");
-    setName("");
-    setEmail("");
-    setErrorMsg("");
-  };
-
   return (
     <div className={darkMode ? "app dark" : "app"}>
       <div className="login-container">
