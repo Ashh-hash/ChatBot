@@ -54,6 +54,7 @@ function App() {
   const [message, setMessage] = useState("");
 
   const [darkMode, setDarkMode] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
 
   // ==========================================
   // CHAT STATE
@@ -640,11 +641,28 @@ async function handleFileUpload(
       }
     >
 
+      {/* Mobile overlay backdrop */}
+      {sidebarOpen && (
+        <div
+          className="sidebar-overlay"
+          onClick={() => setSidebarOpen(false)}
+        />
+      )}
+
       {/* =====================================
           SIDEBAR
       ===================================== */}
 
-      <aside className="sidebar">
+      <aside className={`sidebar${sidebarOpen ? " sidebar-open" : ""}`}>
+
+        {/* Close button - mobile only */}
+        <button
+          className="sidebar-close"
+          onClick={() => setSidebarOpen(false)}
+          aria-label="Close sidebar"
+        >
+          ✕
+        </button>
 
         {/* Logo */}
 
@@ -665,7 +683,7 @@ async function handleFileUpload(
 
         <button
           className="new-chat-button"
-          onClick={createNewChat}
+          onClick={() => { createNewChat(); setSidebarOpen(false); }}
         >
 
           <span className="plus">
@@ -692,9 +710,10 @@ async function handleFileUpload(
                   ? "chat-item active"
                   : "chat-item"
               }
-              onClick={() =>
-                setActiveChatId(chat.id)
-              }
+              onClick={() => {
+                setActiveChatId(chat.id);
+                setSidebarOpen(false);
+              }}
             >
 
               <span className="chat-item-icon">
@@ -892,6 +911,15 @@ async function handleFileUpload(
         {/* Header */}
 
         <header className="chat-header">
+
+          {/* Hamburger - mobile only */}
+          <button
+            className="hamburger-btn"
+            onClick={() => setSidebarOpen(true)}
+            aria-label="Open sidebar"
+          >
+            ☰
+          </button>
 
           <div className="header-title">
 
