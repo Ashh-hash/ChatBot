@@ -250,6 +250,8 @@ useEffect(() => {
       setActiveChatId(newChat.id);
 
       setMessage("");
+      setSelectedFile(null);
+      setActiveDocumentId(null);
     } catch (error) {
       console.error(
         "Conversation creation error:",
@@ -713,6 +715,8 @@ async function handleFileUpload(
               onClick={() => {
                 setActiveChatId(chat.id);
                 setSidebarOpen(false);
+                setSelectedFile(null);
+                setActiveDocumentId(null);
               }}
             >
 

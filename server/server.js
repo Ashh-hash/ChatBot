@@ -905,14 +905,31 @@ app.post("/api/upload", upload.single("file"), async (req, res) => {
     }
 
     // ----------------------------------------
-    // RETURN RESULT
+    // SAVE TO DATABASE & RETURN RESULT
     // ----------------------------------------
+
+    // Truncate to 50000 chars to avoid DB column overflow
+    const textToStore = extractedText.substring(0, 50000);
+
+    const doc = await prisma.document.create({
+      data: {
+        filename: req.file.originalname,
+        fileType: fileType,
+        extractedText: textToStore,
+      },
+    });
+
+    console.log("Document saved to DB, ID:", doc.id);
+
+    // Clean up temp file (Render filesystem is ephemeral anyway)
+    try { fs.unlinkSync(filePath); } catch (e) { /* ignore */ }
 
     res.json({
       message: "File uploaded successfully",
       filename: req.file.originalname,
       fileType: fileType,
-      extractedText: extractedText,
+      documentId: doc.id,
+      extractedText: textToStore,
     });
 
   } catch (error) {

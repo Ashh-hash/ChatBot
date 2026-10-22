@@ -43,7 +43,7 @@ model document {
   id             Int          @id @default(autoincrement())
   filename       String
   fileType       String
-  storagePath    String
+  storagePath    String?
   extractedText  String       @db.LongText
   createdAt      DateTime     @default(now())
 }
