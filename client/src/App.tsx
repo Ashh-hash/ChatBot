@@ -372,6 +372,9 @@ async function sendMessage() {
 
   const currentMessage = message.trim();
 
+  // Capture document ID for this request before clearing state
+  const sendingDocumentId = activeDocumentId;
+
   // If a file is attached, include filename in the message
   // so it shows in chat and gets saved to the database
   const displayMessage = selectedFile
@@ -437,6 +440,8 @@ async function sendMessage() {
   }
 
   setMessage("");
+  setSelectedFile(null);
+  setActiveDocumentId(null);
 
   // ==========================================
   // SAVE USER MESSAGE TO MYSQL
@@ -498,7 +503,7 @@ async function sendMessage() {
         body: JSON.stringify({
           messages: groqMessages,
           conversationId: currentChatId,
-          documentId: activeDocumentId || undefined,
+          documentId: sendingDocumentId || undefined,
         }),
       }
     );
